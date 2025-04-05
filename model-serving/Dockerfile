@@ -2,7 +2,6 @@
 FROM python:3.11
 
 # Install all required packages to run the model
-# TODO: 1. Add any additional packages required to run your model
 # RUN apt update && apt install --yes package1 package2 ...
 
 # Work directory
@@ -19,8 +18,7 @@ RUN pip install --requirement requirements.txt --requirement requirements-all.tx
 COPY src src
 
 # Copy model
-# TODO: 2. Change the name of the model file to match the name of your model file
-COPY mnist_model.h5 .
+COPY anomalies_detection_model.h5 .
 
 # Environment variables
 ENV ENVIRONMENT=${ENVIRONMENT}

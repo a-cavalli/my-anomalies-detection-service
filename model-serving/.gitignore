@@ -1,1 +1,2 @@
 # Check parent `.gitignore` file for complete ignored files
+anomalies_detection_model.h5

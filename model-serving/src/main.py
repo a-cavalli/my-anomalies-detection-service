@@ -19,15 +19,23 @@ from common_code.common.models import FieldDescription, ExecutionUnitTag
 from contextlib import asynccontextmanager
 
 # Imports required by the service's model
-# TODO: 1. ADD REQUIRED IMPORTS (ALSO IN THE REQUIREMENTS.TXT)
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import pandas as pd
+
+import os
+import io
+import matplotlib
+
+matplotlib.use('agg')
 
 settings = get_settings()
 
 
 class MyService(Service):
-    # TODO: 2. CHANGE THIS DESCRIPTION
     """
-    My service model
+    My anomalies detection service model
     """
 
     # Any additional fields must be excluded for Pydantic to work
@@ -36,55 +44,78 @@ class MyService(Service):
 
     def __init__(self):
         super().__init__(
-            # TODO: 3. CHANGE THE SERVICE NAME AND SLUG
-            name="My Service",
-            slug="my-service",
+            name="My anomalies detection service",
+            slug="my-anomalies-detection-service",
             url=settings.service_url,
             summary=api_summary,
             description=api_description,
             status=ServiceStatus.AVAILABLE,
-            # TODO: 4. CHANGE THE INPUT AND OUTPUT FIELDS, THE TAGS AND THE HAS_AI VARIABLE
             data_in_fields=[
                 FieldDescription(
-                    name="image",
+                    name="dataset",
                     type=[
-                        FieldDescriptionType.IMAGE_PNG,
-                        FieldDescriptionType.IMAGE_JPEG,
+                        FieldDescriptionType.TEXT_CSV,
+                        FieldDescriptionType.TEXT_PLAIN,
                     ],
                 ),
             ],
             data_out_fields=[
                 FieldDescription(
-                    name="result", type=[FieldDescriptionType.APPLICATION_JSON]
+                    name="result", type=[FieldDescriptionType.IMAGE_PNG]
                 ),
             ],
             tags=[
                 ExecutionUnitTag(
-                    name=ExecutionUnitTagName.IMAGE_PROCESSING,
-                    acronym=ExecutionUnitTagAcronym.IMAGE_PROCESSING,
+                    name=ExecutionUnitTagName.ANOMALY_DETECTION,
+                    acronym=ExecutionUnitTagAcronym.ANOMALY_DETECTION
+                ),
+                ExecutionUnitTag(
+                    name=ExecutionUnitTagName.TIME_SERIES,
+                    acronym=ExecutionUnitTagAcronym.TIME_SERIES
                 ),
             ],
             has_ai=True,
-            # OPTIONAL: CHANGE THE DOCS URL TO YOUR SERVICE'S DOCS
-            docs_url="https://docs.swiss-ai-center.ch/reference/core-concepts/service/",
+            docs_url="https://docs.swiss-ai-center.ch/reference/services/ae-ano-detection/", 
         )
         self._logger = get_logger(settings)
 
-        # TODO: 5. INITIALIZE THE MODEL (BY IMPORTING IT FROM A FILE)
-        self._model = ...
+        self._model = tf.keras.models.load_model(
+            os.path.join(os.path.dirname(__file__), "..", "anomalies_detection_model.h5")
+        )
 
-    # TODO: 6. CHANGE THE PROCESS METHOD (CORE OF THE SERVICE)
     def process(self, data):
         # NOTE that the data is a dictionary with the keys being the field names set in the data_in_fields
-        # The objects in the data variable are always bytes. It is necessary to convert them to the desired type
-        # before using them.
-        # raw = data["image"].data
-        # input_type = data["image"].type
-        # ... do something with the raw data
+        raw = data["dataset"].data
+        input_type = data["dataset"].type
+
+        print("Input type: ", str(input_type))
+
+        X_test = pd.read_csv(io.BytesIO(raw))
+
+        # Use the model to reconstruct the original time series data
+        reconstructed_X = self._model.predict(X_test)
+
+        # Calculate the reconstruction error for each point in the time series
+        reconstruction_error = np.square(X_test - reconstructed_X).mean(axis=1)
+
+        err = X_test
+        fig, ax = plt.subplots(figsize=(20, 6))
+
+        a = err.loc[reconstruction_error >= np.mean(reconstruction_error)]  # anomaly
+        ax.plot(err, color='blue', label='Normal')
+        ax.scatter(a.index, a, color='red', label='Anomaly')
+        plt.legend()
+
+        # Save the plot
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+
+        # Reset the buffer
+        buf.seek(0)
 
         # NOTE that the result must be a dictionary with the keys being the field names set in the data_out_fields
         return {
-            "result": TaskData(data=..., type=FieldDescriptionType.APPLICATION_JSON)
+            "result": TaskData(data=buf.read(), type=FieldDescriptionType.IMAGE_PNG)
         }
 
 
@@ -140,19 +171,19 @@ async def lifespan(app: FastAPI):
         await service_service.graceful_shutdown(my_service, engine_url)
 
 
-# TODO: 7. CHANGE THE API DESCRIPTION AND SUMMARY
-api_description = """My service
-bla bla bla...
+api_description = """This service detects anomalies in a time series using an autoencoder.
+
+The service expects a CSV file with a single column containing the time series data.
+
+The service returns a plot of the time series with the detected anomalies highlighted in red.
 """
-api_summary = """My service
-bla bla bla...
+api_summary = """My anomalies detection service detects anomalies in a time series using an autoencoder.
 """
 
 # Define the FastAPI application with information
-# TODO: 8. CHANGE THE API TITLE, VERSION, CONTACT AND LICENSE
 app = FastAPI(
     lifespan=lifespan,
-    title="My Service API.",
+    title="My anomalies detection service API.",
     description=api_description,
     version="0.0.1",
     contact={
